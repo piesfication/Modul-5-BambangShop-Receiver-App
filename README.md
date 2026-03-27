@@ -85,5 +85,38 @@ This is the place for you to write reflections:
 ### Mandatory (Subscriber) Reflections
 
 #### Reflection Subscriber-1
+1. Dalam tutorial ini, diperlukan mekanisme untuk mengatur akses ke data yang digunakan oleh banyak thread agar tidak terjadi data race. Dua mekanisme yang bisa digunakan adalah Mutex (Mutual Exclusion) dan RwLock (Read-Write Lock).
+
+Mutex memastikan bahwa hanya satu thread yg dapat mengakses data pada satu waktu, baik untuk membaca maupun menulis, tetapi kurang efisien karena semua thread harus menunggu meskipun hanya ingin membaca data. Adapun RwLock membedakan antara operasi membaca dan menulis sehingga anyak thread dapat membaca data secara bersamaan (concurrent read), namun operasi penulisan tetap bersifat eksklusif (hanya satu thread yang boleh menulis dan semua thread lain harus menunggu), hal ini membuat RwLock lebih efisien untuk kasus di mana operasi membaca lebih sering terjadi dibandingkan penulisan.
+
+static ref NOTIFICATIONS: RwLock<Vec<Notification>> = RwLock::new(vec![]);
+
+Potongan kode ini menunjukkan bahwa data notifikasi disimpan sebagai shared in memory state yang dapat diakses oleh banyak thread. Hal ini relevan karena pada bagian sebelumnya, sistem notifikasi menggunakan multithreading utk kirim notifikasi ke banyak subscriber secara paralel.
+
+Ada dua jenis operasi utama terhadap data ini:
+
+Write (menambahkan notifikasi)
+NOTIFICATIONS.write().unwrap()
+    .push(notification.clone());
+
+Read (membaca semua notifikasi)
+NOTIFICATIONS.read().unwrap()
+    .iter().map(|f| format!("{}", f.clone())).collect();
+
+Dengan menggunakan RwLock, maka banyak thread dapat membaca daftar notifikasi secara bersamaan tanpa saling menghambat, sementara operasi perasi penulisan tetap aman karena dilakukan secara eksklusif. Adapun jika kita menggunakan Mutex, maka semua operasi baik write ataupun read harus dilakukan secara bergantian. Misalkan ada banyak thread yg mau membaca, mereka juga harus tetap megantre. Hal ini menyebabkan bottleneck dan menurunkan performa, terutama dalam kondisi dimana operasi read banyak dilakukan seperti di tutorial ini.
+
+2. Dalam tutorial ini, kita menggunakan library eksternal lazy_static untuk mendefinisikan Vec dan DashMap sebagai variabel static. Hal ini dilakukan karena Rust tidak mengizinkan variabel static yang bersifat mutable untuk didefinisikan dan dimodifikasi secara langsung seperti pada Java. Pada Java, variabel static dapat dimodifikasi dengan bebas melalui static function. Hal ini dimungkinkan karena Java mengandalkan garbage collector dan menangani masalah concurrency pada saat runtime. Namun, pendekatan ini berisiko menyebabkan race condition jika tidak dikelola dengan baik oleh developer.
+
+Rust menjamin memory safety dan thread safety sejak compile time melalui sistem ownership dan borrowing yang ketat. Oleh karena itu, Rust tidak mengizinkan mutable static secara langsung, terutama untuk struktur data seperti Vec dan DashMap yang bersifat mutable. Jika diperbolehkan, hal ini dapat menyebabkan data race, undefined behavior, memory corruption
+
+Dalam tutorial ini, digunakan lazy_static untuk menginisialisasi variabel global secara aman pada saat runtime, serta mekanisme sinkronisasi seperti RwLock atau struktur data thread-safe seperti DashMap untuk memastikan akses data tetap aman dalam multithreading.
+
+lazy_static! {
+    static ref NOTIFICATIONS: RwLock<Vec<Notification>> = RwLock::new(vec![]);
+}
+
+Pada contoh tersebut:
+
+Vec dibungkus dengan RwLock agar aman diakses oleh banyak thread. Rust tidak mengizinkan mutable static seperti Java karena ingin menjamin keamanan memori dan mencegah data race sejak compile time. Karena Vec dan DashMap bersifat mutable, Rust mengharuskan penggunaan pendekatan yang aman seperti lazy_static yang dikombinasikan dengan mekanisme sinkronisasi (RwLock) atau struktur thread-safe (DashMap) untuk mengelola shared state secara aman dalam lingkungan concurrent.
 
 #### Reflection Subscriber-2
